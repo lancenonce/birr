@@ -1,10 +1,24 @@
 // In this module, we generate a proof of the TLS request and generate a proof of the TLS response.
 
-use clap::Parser;
-use notary_client::{Accepted, NotarizationRequest, NotaryClient};
 use std::env;
+
+use http_body_util::Empty;
+use hyper::{body::Bytes, Request, StatusCode};
+use hyper_util::rt::TokioIo;
+use spansy::Spanned;
 use tlsn_examples::ExampleType;
+use tokio_util::compat::{FuturesAsyncReadCompatExt, TokioAsyncReadCompatExt};
+
+use notary_client::{Accepted, NotarizationRequest, NotaryClient};
+use tls_server_fixture::SERVER_DOMAIN;
+use tlsn_common::config::ProtocolConfig;
+use tlsn_core::{request::RequestConfig, transcript::TranscriptCommitConfig};
+use tlsn_formats::http::{DefaultHttpCommitter, HttpCommit, HttpTranscript};
+use tlsn_prover::{Prover, ProverConfig};
 use tlsn_server_fixture::DEFAULT_FIXTURE_PORT;
+use tracing::debug;
+
+use clap::Parser;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -61,4 +75,31 @@ async fn notarize(
         .request_notarization(notarization_request)
         .await
         .expect("Could not connect to the notary. Is it running?");
+
+    // Now, we configure the prover
+    let prover_config = ProverConfig::builder()
+        .server_name(SERVER_DOMAIN)
+        .protocol_config(
+            ProtocolConfig::builder()
+                .max_sent_data(tlsn_examples::MAX_SENT_DATA)
+                .max_recv_data(tlsn_examples::MAX_RECV_DATA)
+                .build()
+                .unwrap(),
+        )
+        .crypto_provider(tlsn_examples::get_crypto_provider_with_server_fixture())
+        .build()?;
+
+    // Next, we create the prover and perform setup
+    let prover = Prover::new(prover_config).setup(notary_connection.compat()).await?;
+
+    let client_socket = tokio::net::TcpStream::connect((server_host, server_port)).await?;
+
+    // Bind the prover
+    let (mpc_tls_connection, prover_fut) = prover.connect(client_socket.compat()).await?;
+
+    let mpc_tls_connection = TokioIo::new(mpc_tls_connection.compat());
+
+    let prover_task = tokio::spawn(prover_fut);
+
+    let (mut request_sender, connection) = hyper::client::conn::http1::handshake(mpc_tls_connection).await?;
 }
