@@ -148,4 +148,31 @@ async fn notarize(
         }
         _ => {}
     }
+
+    let mut builder = TranscriptCommitConfig::builder(prover.transcript());
+
+    DefaultHttpCommitter::default().commit_transcript(&mut builder, &transcript)?;
+
+    prover.transcript_commit(builder.build()?);
+
+    let request_config = RequestConfig::default();
+
+    let (attestation, secrets) = prover.finalize(&request_config).await?;
+
+    println!("Notarization Complete!");
+
+    let attestation_path = tlsn_examples::get_file_path(example_type, "attestation");
+    let secrets_path = tlsn_examples::get_file_path(example_type, "secreats");
+
+    tokio::fs::write(&attestation_path, bincode::serialize(&attestation)?).await?;
+
+    tokio::fs::write(&secrets_path, bincode::serialize(&secrets)?).await?;
+
+    println!("Successfully Notarized");
+    println!(
+        "The attestation has been written to `{attestation_path}` and the \
+        corresponding secrets to `{secrets_path}`."
+    );
+
+    Ok(())
 }
