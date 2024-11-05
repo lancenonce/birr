@@ -688,6 +688,7 @@ dependencies = [
 name = "bir"
 version = "0.1.0"
 dependencies = [
+ "bincode",
  "clap 4.5.20",
  "http 1.1.0",
  "http-body-util",
@@ -709,6 +710,10 @@ dependencies = [
  "tlsn-utils 0.1.0 (git+https://github.com/tlsnotary/tlsn-utils.git)",
  "tlsn-verifier",
  "tokio",
+ "tokio-rustls 0.24.1",
+ "tokio-util",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

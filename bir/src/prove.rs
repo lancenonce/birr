@@ -5,7 +5,7 @@ use std::env;
 use http_body_util::Empty;
 use hyper::{body::Bytes, Request, StatusCode};
 use hyper_util::rt::TokioIo;
-use spansy::Spanned;
+use tlsn_formats::spansy::Spanned;
 use tlsn_examples::ExampleType;
 use tokio_util::compat::{FuturesAsyncReadCompatExt, TokioAsyncReadCompatExt};
 
@@ -17,33 +17,10 @@ use tlsn_prover::{Prover, ProverConfig};
 use tlsn_server_fixture::DEFAULT_FIXTURE_PORT;
 use tracing::debug;
 
-use clap::Parser;
 
-const SERVER_DOMAIN: String = "api.nbe.gov.et";
+const SERVER_DOMAIN: &str = "api.nbe.gov.et";
 
-#[derive(Parser, Debug)]
-#[command(version, about, long_about = None)]
-struct Args {
-    #[clap(default_value_t, value_enum)]
-    example_type: ExampleType,
-}
-
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let args = Args::parse();
-
-    let url = "https://api.nbe.gov.et/api/get-selected-exchange-rates";
-
-    let (_, extra_headers) = match args.example_type {
-        ExampleType::Json => ("/formats/json", vec![]),
-        ExampleType::Html => ("/formats/html", vec![]),
-        ExampleType::Authenticated => ("/protected", vec![("Authorization", "random_auth_token")]),
-    };
-
-    notarize(url, extra_headers, &args.example_type).await
-}
-
-async fn notarize(
+pub async fn notarize(
     uri: &str,
     extra_headers: Vec<(&str, &str)>,
     example_type: &ExampleType,
@@ -54,7 +31,7 @@ async fn notarize(
     let notary_port: u16 = env::var("NOTARY_PORT").unwrap_or("7047".into()).parse()?;
     let server_host: String = env::var("SERVER_HOST").unwrap_or("127.0.0.1".into());
     let server_port: u16 = env::var("SERVER_PORT")
-        .unwrap_or(DEFAULT_FIXTURE_PORT)
+        .unwrap_or(DEFAULT_FIXTURE_PORT.to_string())
         .parse()?;
 
     // First, we build a client to connect to the notary server
@@ -144,7 +121,7 @@ async fn notarize(
             debug!("{}", serde_json::to_string_pretty(&parsed)?);
         }
         tlsn_formats::http::BodyContent::Unknown(_span) => {
-            debug("{}", &body);
+            debug!("{}", &body);
         }
         _ => {}
     }
