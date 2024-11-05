@@ -10,7 +10,6 @@ use tlsn_examples::ExampleType;
 use tokio_util::compat::{FuturesAsyncReadCompatExt, TokioAsyncReadCompatExt};
 
 use notary_client::{Accepted, NotarizationRequest, NotaryClient};
-use tls_server_fixture::SERVER_DOMAIN;
 use tlsn_common::config::ProtocolConfig;
 use tlsn_core::{request::RequestConfig, transcript::TranscriptCommitConfig};
 use tlsn_formats::http::{DefaultHttpCommitter, HttpCommit, HttpTranscript};
@@ -19,6 +18,8 @@ use tlsn_server_fixture::DEFAULT_FIXTURE_PORT;
 use tracing::debug;
 
 use clap::Parser;
+
+const SERVER_DOMAIN: String = "api.nbe.gov.et";
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -31,13 +32,15 @@ struct Args {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
 
-    let (uri, extra_headers) = match args.example_type {
+    let url = "https://api.nbe.gov.et/api/get-selected-exchange-rates";
+
+    let (_, extra_headers) = match args.example_type {
         ExampleType::Json => ("/formats/json", vec![]),
         ExampleType::Html => ("/formats/html", vec![]),
         ExampleType::Authenticated => ("/protected", vec![("Authorization", "random_auth_token")]),
     };
 
-    notarize(uri, extra_headers, &args.example_type).await
+    notarize(url, extra_headers, &args.example_type).await
 }
 
 async fn notarize(
@@ -90,7 +93,9 @@ async fn notarize(
         .build()?;
 
     // Next, we create the prover and perform setup
-    let prover = Prover::new(prover_config).setup(notary_connection.compat()).await?;
+    let prover = Prover::new(prover_config)
+        .setup(notary_connection.compat())
+        .await?;
 
     let client_socket = tokio::net::TcpStream::connect((server_host, server_port)).await?;
 
@@ -101,5 +106,20 @@ async fn notarize(
 
     let prover_task = tokio::spawn(prover_fut);
 
-    let (mut request_sender, connection) = hyper::client::conn::http1::handshake(mpc_tls_connection).await?;
+    let (mut request_sender, connection) =
+        hyper::client::conn::http1::handshake(mpc_tls_connection).await?;
+
+    tokio::spawn(connection);
+
+    // Now, we call build the api request
+    let request_builder = Request::builder().uri(uri).method("GET").header("Host", SERVER_DOMAIN).header("Accept", "*/*").header("Accept-Encoding", "identity").header("Connection", "close");
+
+    let mut request_builder = request_builder; 
+    for (key, value) in extra_headers {
+        request_builder = request_builder.header(key, value);
+    }
+    let request = request_builder.body(Empty::<Bytes>::new())?;
+
+    println!("Starting an MPC TLS connection with the server");
+    
 }
