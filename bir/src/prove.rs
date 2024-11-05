@@ -121,5 +121,31 @@ async fn notarize(
     let request = request_builder.body(Empty::<Bytes>::new())?;
 
     println!("Starting an MPC TLS connection with the server");
-    
+
+    let response = request_sender.send_request(request).await?;
+
+    println!("Got a response from the server: {}", response.status());
+
+    assert!(response.status() == StatusCode::OK);
+
+    let prover = prover_task.await??;
+
+    let mut prover = prover.start_notarize();
+
+    let transcript = HttpTranscript::parse(prover.transcript())?;
+
+    let body_content = &transcript.responses[0].body.as_ref().unwrap().content;
+
+    let body = String::from_utf8_lossy(body_content.span().as_bytes());
+
+    match body_content {
+        tlsn_formats::http::BodyContent::Json(_json) => {
+            let parsed = serde_json::from_str::<serde_json::Value>(&body)?;
+            debug!("{}", serde_json::to_string_pretty(&parsed)?);
+        }
+        tlsn_formats::http::BodyContent::Unknown(_span) => {
+            debug("{}", &body);
+        }
+        _ => {}
+    }
 }
