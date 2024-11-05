@@ -4,25 +4,6 @@ use tlsn_examples::ExampleType;
 
 pub mod prove;
 
-// #[tokio::main]
-// async fn main() -> Result<(), Box<dyn Error>> {
-//     // let url = "https://api.nbe.gov.et/api/get-selected-exchange-rates";
-
-//     // let client = Client::new();
-
-//     // let res = client.get(url).send().await?;
-
-//     // if res.status().is_success() {
-//     //     let body = res.text().await?;
-        
-//     //     println!("{}", body);
-//     // } else {
-//     //     eprintln!("Failed to fetch exchange rates: {}", res.status());
-//     // }
-
-//     Ok(())
-// }
-
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct Args {

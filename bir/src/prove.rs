@@ -1,12 +1,10 @@
 // In this module, we generate a proof of the TLS request and generate a proof of the TLS response.
 
-use std::env;
-
 use http_body_util::Empty;
 use hyper::{body::Bytes, Request, StatusCode};
 use hyper_util::rt::TokioIo;
-use tlsn_formats::spansy::Spanned;
 use tlsn_examples::ExampleType;
+use tlsn_formats::spansy::Spanned;
 use tokio_util::compat::{FuturesAsyncReadCompatExt, TokioAsyncReadCompatExt};
 
 use notary_client::{Accepted, NotarizationRequest, NotaryClient};
@@ -14,9 +12,7 @@ use tlsn_common::config::ProtocolConfig;
 use tlsn_core::{request::RequestConfig, transcript::TranscriptCommitConfig};
 use tlsn_formats::http::{DefaultHttpCommitter, HttpCommit, HttpTranscript};
 use tlsn_prover::{Prover, ProverConfig};
-use tlsn_server_fixture::DEFAULT_FIXTURE_PORT;
 use tracing::debug;
-
 
 const SERVER_DOMAIN: &str = "api.nbe.gov.et";
 
@@ -27,17 +23,16 @@ pub async fn notarize(
 ) -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
 
-    let notary_host: String = env::var("NOTARY_HOST").unwrap_or("127.0.0.1".into());
-    let notary_port: u16 = env::var("NOTARY_PORT").unwrap_or("7047".into()).parse()?;
-    let server_host: String = env::var("SERVER_HOST").unwrap_or("127.0.0.1".into());
-    let server_port: u16 = env::var("SERVER_PORT")
-        .unwrap_or(DEFAULT_FIXTURE_PORT.to_string())
-        .parse()?;
+    let notary_host: String = "0.0.0.0".into();
+    let notary_port: u16 = "7047".parse()?;
+    let server_host: String = "api.nbe.gov.et".into();
+    let server_port: u16 = 443;
 
     // First, we build a client to connect to the notary server
     let notary_client = NotaryClient::builder()
         .host(notary_host)
         .port(notary_port)
+        .enable_tls(false)
         .build()
         .unwrap();
 
@@ -89,9 +84,21 @@ pub async fn notarize(
     tokio::spawn(connection);
 
     // Now, we call build the api request
-    let request_builder = Request::builder().uri(uri).method("GET").header("Host", SERVER_DOMAIN).header("Accept", "*/*").header("Accept-Encoding", "identity").header("Connection", "close");
+    let request_builder = Request::builder()
+        .uri(uri)
+        .method("GET")
+        .header("Host", SERVER_DOMAIN)
+        .header("Accept", "*/*")
+        .header("Accept-Encoding", "identity")
+        .header(
+            "Cache-Control",
+            "no-cache, no-store, max-age=0, must-revalidate",
+        )
+        .header("Pragma", "no-cache")
+        .header("Expires", "0");
 
-    let mut request_builder = request_builder; 
+
+    let mut request_builder = request_builder;
     for (key, value) in extra_headers {
         request_builder = request_builder.header(key, value);
     }
@@ -99,7 +106,7 @@ pub async fn notarize(
 
     println!("Starting an MPC TLS connection with the server");
 
-    let response = request_sender.send_request(request).await?;
+    let response = request_sender.send_request(request).await.unwrap();
 
     println!("Got a response from the server: {}", response.status());
 
