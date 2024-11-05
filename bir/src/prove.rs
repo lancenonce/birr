@@ -15,4 +15,10 @@ struct Args {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
+
+    let (uri, extra_headers) = match args.example_type {
+        ExampleType::Json => ("/formats/json", vec![]),
+        ExampleType::Html => ("/formats/html", vec![]),
+        ExampleType::Authenticated => ("/protected", vec![("Authorization", "random_auth_token")]),
+    };
 }
