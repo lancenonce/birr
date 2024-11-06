@@ -16,10 +16,10 @@ use tracing::debug;
 
 const SERVER_DOMAIN: &str = "api.nbe.gov.et";
 
+const USER_AGENT: &str = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36";
+
 pub async fn notarize(
-    uri: &str,
-    extra_headers: Vec<(&str, &str)>,
-    example_type: &ExampleType,
+    uri: &str
 ) -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
 
@@ -84,10 +84,11 @@ pub async fn notarize(
     tokio::spawn(connection);
 
     // Now, we call build the api request
-    let request_builder = Request::builder()
+    let request = Request::builder()
         .uri(uri)
         .method("GET")
-        .header("Host", SERVER_DOMAIN)
+        .header(hyper::header::CONTENT_TYPE, "application/json")
+        .header(hyper::header::HOST, SERVER_DOMAIN)
         .header("Accept", "*/*")
         .header("Accept-Encoding", "identity")
         .header(
@@ -95,68 +96,68 @@ pub async fn notarize(
             "no-cache, no-store, max-age=0, must-revalidate",
         )
         .header("Pragma", "no-cache")
-        .header("Expires", "0");
-
-
-    let mut request_builder = request_builder;
-    for (key, value) in extra_headers {
-        request_builder = request_builder.header(key, value);
-    }
-    let request = request_builder.body(Empty::<Bytes>::new())?;
+        .header("Expires", "0")
+        .header("User-Agent", USER_AGENT)
+        .body(Empty::<Bytes>::new())?;
 
     println!("Starting an MPC TLS connection with the server");
 
-    let response = request_sender.send_request(request).await.unwrap();
+    let response = request_sender.send_request(request).await;
 
-    println!("Got a response from the server: {}", response.status());
-
-    assert!(response.status() == StatusCode::OK);
-
-    let prover = prover_task.await??;
-
-    let mut prover = prover.start_notarize();
-
-    let transcript = HttpTranscript::parse(prover.transcript())?;
-
-    let body_content = &transcript.responses[0].body.as_ref().unwrap().content;
-
-    let body = String::from_utf8_lossy(body_content.span().as_bytes());
-
-    match body_content {
-        tlsn_formats::http::BodyContent::Json(_json) => {
-            let parsed = serde_json::from_str::<serde_json::Value>(&body)?;
-            debug!("{}", serde_json::to_string_pretty(&parsed)?);
-        }
-        tlsn_formats::http::BodyContent::Unknown(_span) => {
-            debug!("{}", &body);
-        }
-        _ => {}
+    match &response {
+        Ok(value) => println!("Response: {:?}", value),
+        Err(err) => println!("Error: {:?}", err),
     }
 
-    let mut builder = TranscriptCommitConfig::builder(prover.transcript());
 
-    DefaultHttpCommitter::default().commit_transcript(&mut builder, &transcript)?;
+//     println!("Got a response from the server: {}", response.status());
+//     assert!(response.status() == StatusCode::OK);
 
-    prover.transcript_commit(builder.build()?);
+//     let prover = prover_task.await??;
 
-    let request_config = RequestConfig::default();
+//     let mut prover = prover.start_notarize();
 
-    let (attestation, secrets) = prover.finalize(&request_config).await?;
+//     let transcript = HttpTranscript::parse(prover.transcript())?;
 
-    println!("Notarization Complete!");
+//     let body_content = &transcript.responses[0].body.as_ref().unwrap().content;
 
-    let attestation_path = tlsn_examples::get_file_path(example_type, "attestation");
-    let secrets_path = tlsn_examples::get_file_path(example_type, "secreats");
+//     let body = String::from_utf8_lossy(body_content.span().as_bytes());
 
-    tokio::fs::write(&attestation_path, bincode::serialize(&attestation)?).await?;
+//     match body_content {
+//         tlsn_formats::http::BodyContent::Json(_json) => {
+//             let parsed = serde_json::from_str::<serde_json::Value>(&body)?;
+//             debug!("{}", serde_json::to_string_pretty(&parsed)?);
+//         }
+//         tlsn_formats::http::BodyContent::Unknown(_span) => {
+//             debug!("{}", &body);
+//         }
+//         _ => {}
+//     }
 
-    tokio::fs::write(&secrets_path, bincode::serialize(&secrets)?).await?;
+//     let mut builder = TranscriptCommitConfig::builder(prover.transcript());
 
-    println!("Successfully Notarized");
-    println!(
-        "The attestation has been written to `{attestation_path}` and the \
-        corresponding secrets to `{secrets_path}`."
-    );
+//     DefaultHttpCommitter::default().commit_transcript(&mut builder, &transcript)?;
+
+//     prover.transcript_commit(builder.build()?);
+
+//     let request_config = RequestConfig::default();
+
+//     let (attestation, secrets) = prover.finalize(&request_config).await?;
+
+//     println!("Notarization Complete!");
+
+//     let attestation_path = tlsn_examples::get_file_path(example_type, "attestation");
+//     let secrets_path = tlsn_examples::get_file_path(example_type, "secreats");
+
+//     tokio::fs::write(&attestation_path, bincode::serialize(&attestation)?).await?;
+
+//     tokio::fs::write(&secrets_path, bincode::serialize(&secrets)?).await?;
+
+//     println!("Successfully Notarized");
+//     println!(
+//         "The attestation has been written to `{attestation_path}` and the \
+//         corresponding secrets to `{secrets_path}`."
+//     );
 
     Ok(())
-}
+    }
