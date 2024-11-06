@@ -35,7 +35,7 @@ contract EthiopianBirrV0 is
     // Pausable
     // Rescuable
 {
-    uint256 private _totalSupply;
+    bool private init;
 
     function initialize(
         string memory _name,
@@ -43,9 +43,14 @@ contract EthiopianBirrV0 is
         uint8 _decimals,
         uint256 _initialSupply
     ) public initializer {
-        transferOwnership(msg.sender);
         __ERC20_init(_name, _symbol);
         _mint(msg.sender, _initialSupply * 10 ** _decimals);
+    }
+
+    function setOwner(address _owner) public {
+        require(init == false, "Contract is already initialized");
+        transferOwnership(_owner);
+        init = true;
     }
 
     function _authorizeUpgrade(
