@@ -43,10 +43,9 @@ contract EthiopianBirrV0 is
         uint8 _decimals,
         uint256 _initialSupply
     ) public initializer {
-        __ERC20_init(_name, _symbol);
-
-        _mint(msg.sender, _initialSupply * 10 ** _decimals);
         transferOwnership(msg.sender);
+        __ERC20_init(_name, _symbol);
+        _mint(msg.sender, _initialSupply * 10 ** _decimals);
     }
 
     function _authorizeUpgrade(

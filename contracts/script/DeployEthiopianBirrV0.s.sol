@@ -14,12 +14,11 @@ contract DeployEthiopianBirrV0 is Script {
         EthiopianBirrV0 ethiopianBirrImplementation = new EthiopianBirrV0();
 
         bytes memory initializeData = abi.encodeWithSignature(
-            "initialize(string,string,uint8,uint256,address)",
+            "initialize(string,string,uint8,uint256)",
             "Ethiopian Birr",   
             "sETB",             
             18,                 
-            1000000000,        
-            msg.sender         
+            1000000000      
         );
 
         EthiopianBirrProxy proxy = new EthiopianBirrProxy(
