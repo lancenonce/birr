@@ -34,7 +34,7 @@ pragma solidity ^0.8.0;
  * 2. Reformat, conform to Solidity 0.6 syntax, and add error messages (5/13/20)
  * 3. Make public functions external (5/27/20)
  */
-contract Ownable {
+abstract contract Ownable {
     // Owner of the contract
     address private _owner;
 
@@ -48,7 +48,7 @@ contract Ownable {
     /**
      * @dev The constructor sets the original owner of the contract to the sender account.
      */
-    constructor() public {
+    constructor() {
         setOwner(msg.sender);
     }
 

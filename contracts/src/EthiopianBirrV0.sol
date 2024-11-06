@@ -18,37 +18,40 @@
 
 pragma solidity ^0.8.0;
 
-import "./Ownable.sol";
-import "./Blacklistable.sol";
-import "./Pausable.sol";
-import "./Rescuable.sol";
-import "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
-import "@openzeppelin/contracts/proxy/utils/Initializable.sol";
+import "@openzeppelin-up/contracts/access/OwnableUpgradeable.sol";
+// import "./Blacklistable.sol";
+// import "./Pausable.sol";
+// import "./Rescuable.sol";
+import "@openzeppelin-up/contracts/token/ERC20/ERC20Upgradeable.sol";
 import "@openzeppelin/contracts/proxy/utils/UUPSUpgradeable.sol";
+import "@openzeppelin/contracts/token/ERC20/Erc20.sol";
 
-contract EthiopianBirrV0 is ERC20Upgradeable, Ownable, Blacklistable, Pausable, Rescuable, Initializable, UUPSUpgradeable {
+contract EthiopianBirrV0 is
+    Initializable,
+    ERC20Upgradeable,
+    UUPSUpgradeable,
+    OwnableUpgradeable
+    // Blacklistable,
+    // Pausable
+    // Rescuable
+{
     uint256 private _totalSupply;
 
     function initialize(
-        string memory name,
-        string memory symbol,
-        uint8 decimals,
-        uint256 initialSupply,
-        address owner
+        string memory _name,
+        string memory _symbol,
+        uint8 _decimals,
+        uint256 _initialSupply
     ) public initializer {
-        __ERC20_init(name, symbol);
+        __ERC20_init(_name, _symbol);
 
-        _mint(owner, initialSupply * 10**decimals);
-        Ownable.transferOwnership(owner);
+        _mint(msg.sender, _initialSupply * 10 ** _decimals);
+        transferOwnership(msg.sender);
     }
 
-    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
-
-    function _beforeTokenTransfer(address from, address to, uint256 amount) internal override(ERC20) whenNotPaused {
-        require(!Blacklistable.isBlacklisted(from), "Sender is blacklisted");
-        require(!Blacklistable.isBlacklisted(to), "Recipient is blacklisted");
-        super._beforeTokenTransfer(from, to, amount);
-    }
+    function _authorizeUpgrade(
+        address newImplementation
+    ) internal override onlyOwner {}
 
     function mint(address to, uint256 amount) external onlyOwner {
         _mint(to, amount);
@@ -58,15 +61,49 @@ contract EthiopianBirrV0 is ERC20Upgradeable, Ownable, Blacklistable, Pausable, 
         _burn(msg.sender, amount);
     }
 
-    function rescueTokens(address tokenAddress, address recipient, uint256 amount) external onlyOwner {
-        Rescuable.rescueTokens(tokenAddress, recipient, amount);
+    // function rescueTokens(
+    //     address tokenAddress,
+    //     address recipient,
+    //     uint256 amount
+    // ) external onlyOwner {
+    //     Rescuable.rescueTokens(tokenAddress, recipient, amount);
+    // }
+
+    // function pause() external override onlyOwner {
+    //     Pausable.pause();
+    // }
+
+    // function unpause() external override onlyOwner {
+    //     Pausable.unpause();
+    // }
+
+    function owner()
+        public
+        view
+        virtual
+        override(OwnableUpgradeable)
+        returns (address)
+    {
+        return super.owner();
     }
 
-    function pause() external onlyOwner {
-        Pausable.pause();
+    function transferOwnership(
+        address newOwner
+    ) public virtual override(OwnableUpgradeable) onlyOwner {
+        super.transferOwnership(newOwner);
     }
 
-    function unpause() external onlyOwner {
-        Pausable.unpause();
-    }
+    // function _isBlacklisted(
+    //     address _account
+    // ) internal view virtual override returns (bool) {
+    //     return super._isBlacklisted(_account);
+    // }
+
+    // function _blacklist(address _account) internal virtual override {
+    //     super._blacklist(_account);
+    // }
+
+    // function _unBlacklist(address _account) internal virtual override {
+    //     super._unBlacklist(_account);
+    // }
 }
