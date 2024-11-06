@@ -22,11 +22,11 @@ import "./Ownable.sol";
 import "./Blacklistable.sol";
 import "./Pausable.sol";
 import "./Rescuable.sol";
-import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
 import "@openzeppelin/contracts/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts/proxy/utils/UUPSUpgradeable.sol";
 
-contract EthiopianBirrV0 is ERC20, Ownable, Blacklistable, Pausable, Rescuable, Initializable, UUPSUpgradeable {
+contract EthiopianBirrV0 is ERC20Upgradeable, Ownable, Blacklistable, Pausable, Rescuable, Initializable, UUPSUpgradeable {
     uint256 private _totalSupply;
 
     function initialize(
@@ -37,22 +37,16 @@ contract EthiopianBirrV0 is ERC20, Ownable, Blacklistable, Pausable, Rescuable, 
         address owner
     ) public initializer {
         __ERC20_init(name, symbol);
-        __Ownable_init();
-        __Pausable_init();
-        __Blacklistable_init();
-        __Rescuable_init();
-        __EIP3009_init(name);
-        __EIP2612_init(name);
 
         _mint(owner, initialSupply * 10**decimals);
-        transferOwnership(owner);
+        Ownable.transferOwnership(owner);
     }
 
     function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
 
     function _beforeTokenTransfer(address from, address to, uint256 amount) internal override(ERC20) whenNotPaused {
-        require(!isBlacklisted(from), "Sender is blacklisted");
-        require(!isBlacklisted(to), "Recipient is blacklisted");
+        require(!Blacklistable.isBlacklisted(from), "Sender is blacklisted");
+        require(!Blacklistable.isBlacklisted(to), "Recipient is blacklisted");
         super._beforeTokenTransfer(from, to, amount);
     }
 
@@ -65,14 +59,14 @@ contract EthiopianBirrV0 is ERC20, Ownable, Blacklistable, Pausable, Rescuable, 
     }
 
     function rescueTokens(address tokenAddress, address recipient, uint256 amount) external onlyOwner {
-        _rescueTokens(tokenAddress, recipient, amount);
+        Rescuable.rescueTokens(tokenAddress, recipient, amount);
     }
 
     function pause() external onlyOwner {
-        _pause();
+        Pausable.pause();
     }
 
     function unpause() external onlyOwner {
-        _unpause();
+        Pausable.unpause();
     }
 }

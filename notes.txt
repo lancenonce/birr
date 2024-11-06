@@ -1,0 +1,1 @@
+forge script script/DeployEthiopianBirr.s.sol --rpc-url $RPC_URL --broadcast --private-key $PRIVATE_KEY -vvvv
