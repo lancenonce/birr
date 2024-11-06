@@ -1,5 +1,5 @@
 /**
- * Copyright 2023 Circle Internet Group, Inc. All rights reserved.
+ * Copyright 2024 Seree Technologies, Inc. All rights reserved.
  *
  * SPDX-License-Identifier: Apache-2.0
  *
