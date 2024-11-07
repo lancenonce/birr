@@ -91,19 +91,15 @@ contract ETB is ERC20Burnable, MessageClient, BirrHook {
 
     function officialSwap(
         uint _amount,
-        uint256 _rate,
-        bytes32 _messageHash,
-        bytes memory _signature,
-        address _usdc
+        address _desiredOutputToken
     ) internal {
-        require(verifySignature(_messageHash, _signature), "Invalid signature");
-        usdc = IERC20(_usdc);
+        token = IERC20(_desiredOutputToken);
         uint256 usdcAmount = (_amount * _rate) / 1e18; 
         require(
-            usdc.balanceOf(address(this)) >= usdcAmount,
+            token.balanceOf(address(this)) >= usdcAmount,
             "Insufficient USDC balance"
         );
-        usdc.transfer(msg.sender, usdcAmount);
+        token.transfer(msg.sender, usdcAmount);
     }
 
     // This is the swap function for the uniswap AMM rate
