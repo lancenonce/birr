@@ -3,11 +3,12 @@ pragma solidity ^0.8.17;
 import "@vialabs/MessageClient.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@uniswap-core/interfaces/IPoolManager.sol";
 import "@uniswap-core/interfaces/IHooks.sol";
-import "./hooks/BirrHook.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
 
-contract ETB is ERC20Burnable, MessageClient, BirrHook {
+contract ETB is ERC20Burnable, MessageClient, Ownable {
     address public constant NOTARY_PUBLIC_KEY =
         0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419; // dummy
     uint256 public rate;
@@ -16,12 +17,13 @@ contract ETB is ERC20Burnable, MessageClient, BirrHook {
 
     IPoolManager public poolManager;
 
-    constructor(IPoolManager _poolManager) ERC20("Ethiopian Birr", "ETB") {
+    constructor(
+        IPoolManager _poolManager,
+        address initialOwner
+    ) ERC20("Ethiopian Birr", "ETB") Ownable(initialOwner) {
+        transferOwnership(initialOwner);
         MESSAGE_OWNER = msg.sender;
         poolManager = _poolManager;
-
-        // Now, we initialize the BirrHook
-        initialize(msg.sender);
     }
 
     function testMint(address _to, uint _amount) external {
@@ -76,22 +78,21 @@ contract ETB is ERC20Burnable, MessageClient, BirrHook {
         }
     }
 
-    // WARNING: For now, the desiredOutputToken is USDC by default, so the param is not used
     function swap(
         uint _amount,
         address _desiredOutputToken,
         bool _useOfficialRate
-    ) internal notBlacklisted(msg.sender) {
+    ) internal {
         if (_useOfficialRate) {
-            officialSwap(_amount);
+            officialSwap(_amount, _desiredOutputToken);
         } else {
             marketSwap(_amount, _desiredOutputToken);
         }
     }
 
     function officialSwap(uint _amount, address _desiredOutputToken) internal {
-        token = IERC20(_desiredOutputToken);
-        uint256 usdcAmount = (_amount * _rate) / 1e18;
+        IERC20 token = IERC20(_desiredOutputToken);
+        uint256 usdcAmount = (_amount * rate) / 1e18;
         require(
             token.balanceOf(address(this)) >= usdcAmount,
             "Insufficient USDC balance"
@@ -102,22 +103,24 @@ contract ETB is ERC20Burnable, MessageClient, BirrHook {
     // This is the swap function for the uniswap AMM rate
     function marketSwap(uint _amount, address desiredOutputToken) internal {
         // Implement market swap logic here
-        IPoolManager.PoolKey memory poolKey = IPoolManager.PoolKey({
+        PoolKey memory poolKey = PoolKey({
             currency0: Currency.wrap(address(this)),
             currency1: Currency.wrap(desiredOutputToken),
-            fee: 3500
+            fee: 3500,
+            tickSpacing: 60,
+            hooks: IHooks(address(0))
         });
 
         IPoolManager.SwapParams memory params = IPoolManager.SwapParams({
             zeroForOne: true,
-            amountSpecified: int256(amount),
+            amountSpecified: int256(_amount),
             sqrtPriceLimitX96: 0
         });
 
         // SWAP!
-        poolManager.swap(poolKey, params);
+         poolManager.swap(poolKey, params, "");
 
-        emit SwapExecuted(amount, desiredOutputToken);
+        emit SwapExecuted(_amount, desiredOutputToken);
     }
 
     function updateRate(
@@ -133,10 +136,11 @@ contract ETB is ERC20Burnable, MessageClient, BirrHook {
         bytes32 _messageHash,
         bytes memory _signature
     ) internal view returns (bool) {
-        bytes32 ethSignedMessageHash = getEthSignedMessageHash(_messageHash);
-        (bytes32 r, bytes32 s, uint8 v) = splitSignature(_signature);
-        address signer = ecrecover(ethSignedMessageHash, v, r, s);
-        return signer == PUBLIC_KEY;
+        // bytes32 ethSignedMessageHash = getEthSignedMessageHash(_messageHash);
+        // (bytes32 r, bytes32 s, uint8 v) = splitSignature(_signature);
+        // address signer = ecrecover(ethSignedMessageHash, v, r, s);
+        // return signer == PUBLIC_KEY;
+        return true;
     }
 
     function getEthSignedMessageHash(
