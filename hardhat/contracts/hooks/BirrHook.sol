@@ -2,8 +2,8 @@
 
 pragma solidity ^0.8.0;
 
-import "@uniswap/v4-core/contracts/interfaces/IHooks.sol";
-import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import "../lib/uniswap-v4-core/src/interfaces/IHooks.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
 
 
 // Here, we will launch the hook for the Birr token on Unichain at 0x0135c25Bd3e88b1aac5FDC6f16FEe2C63d967f9d
@@ -13,7 +13,7 @@ import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
  * @title Birr Blacklist Hook
  * @dev A Uniswap V4 hook that prevents blacklisted addresses from executing swaps.
  */
-contract BirrHook is IHooks, OwnableUpgradeable {
+contract BirrHook is IHooks, Ownable {
     address public blacklister;
     mapping(address => bool) private _blacklisted;
 

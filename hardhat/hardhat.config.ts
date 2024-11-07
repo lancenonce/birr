@@ -19,7 +19,7 @@ const config: any = {
 		token: "ETH",
 		coinmarketcap: process.env.CMC_API_KEY || "",
 	},
-	networks: {		
+	network: {		
 		"ethereum-testnet": {
 			chainId: 11155111,
 			url: "https://eth-sepolia.public.blastapi.io",
@@ -60,6 +60,9 @@ const config: any = {
 			},
 		],
 	},
+	networks: {
+		hardhat: {},
+	  },
 };
 
 export default config;

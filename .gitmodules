@@ -13,3 +13,12 @@
 [submodule "contracts/lib/v4-periphery"]
 	path = contracts/lib/v4-periphery
 	url = https://github.com/Uniswap/v4-periphery
+[submodule "hardhat/contracts/lib/uniswap-v4-core"]
+	path = hardhat/contracts/lib/uniswap-v4-core
+	url = https://github.com/Uniswap/v4-core.git
+[submodule "hardhat/openzeppelin-contracts-upgradeable"]
+	path = hardhat/openzeppelin-contracts-upgradeable
+	url = https://github.com/OpenZeppelin/openzeppelin-contracts-upgradeable.git
+[submodule "contracts/lib/npm-contracts"]
+	path = contracts/lib/npm-contracts
+	url = https://github.com/VIALabs-io/npm-contracts.git
