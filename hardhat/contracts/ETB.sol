@@ -7,9 +7,20 @@ import "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import "./hooks/BirrHook.sol";
 
-contract ETB is ERC20Burnable, MessageClient {
-    constructor() ERC20("Ethiopian Birr", "ETB") {
+contract ETB is ERC20Burnable, MessageClient, BirrHook {
+    address constant public NOTARY_PUBLIC_KEY = 0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419; // dummy
+    uint256 public rate;
+
+    event SwapExecuted(uint amountSwapped, address outputToken);
+
+    IPoolManager public poolManager;
+
+    constructor(IPoolManager _poolManager) ERC20("Ethiopian Birr", "ETB") {
         MESSAGE_OWNER = msg.sender;
+        poolManager = _poolManager;
+
+        // Now, we initialize the BirrHook
+        initialize(msg.sender);
     }
 
     function testMint(address _to, uint _amount) external {
@@ -38,7 +49,7 @@ contract ETB is ERC20Burnable, MessageClient {
         );
     }
 
-    // add a desired output token to the data
+    // Process cross-chain messages
     function messageProcess(
         uint,
         uint _sourceChainId,
@@ -61,11 +72,11 @@ contract ETB is ERC20Burnable, MessageClient {
     }
 
     // WARNING: For now, the desiredOutputToken is USDC by default, so the param is not used
-    function swap(uint _amount, address _desiredOutputToken, bool _useOfficialRate) internal {
+    function swap(uint _amount, address _desiredOutputToken, bool _useOfficialRate) internal notBlacklisted(msg.sender) {
         if (_useOfficialRate) {
             officialSwap(_amount);
         } else {
-            marketSwap(_amount);
+            marketSwap(_amount, _desiredOutputToken);
         }
     }
 
@@ -73,7 +84,49 @@ contract ETB is ERC20Burnable, MessageClient {
         // Implement official swap logic here
     }
 
-    function marketSwap(uint _amount) internal {
+    // This is the swap function for the uniswap AMM rate
+    function marketSwap(uint _amount, address desiredOutputToken) internal {
         // Implement market swap logic here
+        IPoolManager.PoolKey memory poolKey = IPoolManager.PoolKey({
+            currency0: Currency.wrap(address(this)),
+            currency1: Currency.wrap(desiredOutputToken),
+            fee: 3500
+        });
+
+        IPoolManager.SwapParams memory params = IPoolManager.SwapParams({
+            zeroForOne: true,
+            amountSpecified: int256(amount),
+            sqrtPriceLimitX96: 0
+        });
+
+        // SWAP!
+        poolManager.swap(poolKey, params);
+
+        emit SwapExecuted(amount, desiredOutputToken);
+    }
+
+    function updateRate(uint256 _rate, bytes32 _messageHash, bytes memory _signature) external onlyOwner {
+        require(verifySignature(_messageHash, _signature), "Invalid signature");
+        rate = _rate;
+    }
+
+    function verifySignature(bytes32 _messageHash, bytes memory _signature) internal view returns (bool) {
+        bytes32 ethSignedMessageHash = getEthSignedMessageHash(_messageHash);
+        (bytes32 r, bytes32 s, uint8 v) = splitSignature(_signature);
+        address signer = ecrecover(ethSignedMessageHash, v, r, s);
+        return signer == PUBLIC_KEY;
+    }
+
+    function getEthSignedMessageHash(bytes32 _messageHash) internal pure returns (bytes32) {
+        return keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", _messageHash));
+    }
+
+    function splitSignature(bytes memory _signature) internal pure returns (bytes32 r, bytes32 s, uint8 v) {
+        require(_signature.length == 65, "Invalid signature length");
+        assembly {
+            r := mload(add(_signature, 32))
+            s := mload(add(_signature, 64))
+            v := byte(0, mload(add(_signature, 96)))
+        }
     }
 }
