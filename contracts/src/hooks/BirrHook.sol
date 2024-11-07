@@ -4,7 +4,8 @@ pragma solidity ^0.8.0;
 
 import "@uniswap-core/interfaces/IHooks.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
-
+import "@uniswap-core/interfaces/IPoolManager.sol";
+import "@uniswap-core/types/PoolKey.sol";
 
 // Here, we will launch the hook for the Birr token on Unichain at 0x0135c25Bd3e88b1aac5FDC6f16FEe2C63d967f9d
 // The hook will be used to prevent blacklisted addresses from executing swaps.
@@ -21,8 +22,7 @@ contract BirrHook is IHooks, Ownable {
     event UnBlacklisted(address indexed account);
     event BlacklisterChanged(address indexed newBlacklister);
 
-    function initialize(address initialOwner) public initializer {
-        __Ownable_init();
+    constructor(address initialOwner) Ownable(initialOwner) {
         transferOwnership(initialOwner);
     }
 
@@ -59,7 +59,7 @@ contract BirrHook is IHooks, Ownable {
     // Implementing the beforeSwap hook
     function beforeSwap(
         address sender,
-        IPoolManager.PoolKey calldata key,
+        PoolKey calldata key,
         IPoolManager.SwapParams calldata params
     ) external override notBlacklisted(sender) returns (bytes4) {
         return IHooks.beforeSwap.selector;

@@ -1,6 +1,6 @@
 pragma solidity ^0.8.17;
 
-import "@vialabs-io/npm-contracts/MessageClient.sol";
+import "@vialabs/MessageClient.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
 import "@uniswap-core/interfaces/IPoolManager.sol";
@@ -89,12 +89,9 @@ contract ETB is ERC20Burnable, MessageClient, BirrHook {
         }
     }
 
-    function officialSwap(
-        uint _amount,
-        address _desiredOutputToken
-    ) internal {
+    function officialSwap(uint _amount, address _desiredOutputToken) internal {
         token = IERC20(_desiredOutputToken);
-        uint256 usdcAmount = (_amount * _rate) / 1e18; 
+        uint256 usdcAmount = (_amount * _rate) / 1e18;
         require(
             token.balanceOf(address(this)) >= usdcAmount,
             "Insufficient USDC balance"
