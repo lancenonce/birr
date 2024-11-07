@@ -2,13 +2,15 @@
 	"name": "etb-token",
 	"version": "0.1.0",
 	"main": "index.js",
-	"author": "Atlas",
+	"author": "Lance",
 	"license": "MIT",
 	"private": true,
 	"dependencies": {
-		"@openzeppelin/contracts": "^4.9.5",
+		"@openzeppelin/contracts": "^4.9.6",
 		"@vialabs-io/npm-contracts": "github:VIALabs-io/npm-contracts",
-		"@vialabs-io/npm-registry": "github:VIALabs-io/npm-registry"
+		"@vialabs-io/npm-registry": "github:VIALabs-io/npm-registry",
+		"@uniswap/v4-core/": "github:Uniswap/v4-core",
+		"@uniswap/v4-periphery/": "github:Uniswap/v4-periphery"
 	},
 	"devDependencies": {
 		"@typechain/ethers-v6": "^0.5.1",

@@ -23,10 +23,10 @@ pub async fn notarize(
 ) -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
 
-    let notary_host: String = "0.0.0.0".into();
-    let notary_port: u16 = "7047".parse()?;
+    let notary_host: String = "notary.pse.dev".into();
+    let notary_port: u16 = "443".parse()?;
     let server_host: String = "api.nbe.gov.et".into();
-    let server_port: u16 = 443;
+    let server_port: u16 = 80;
 
     // First, we build a client to connect to the notary server
     let notary_client = NotaryClient::builder()

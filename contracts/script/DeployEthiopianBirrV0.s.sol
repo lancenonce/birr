@@ -2,8 +2,8 @@
 pragma solidity ^0.8.0;
 
 import "forge-std/Script.sol";
-import "../src/EthiopianBirrV0.sol";
-import "../src/EthiopianBirrProxy.sol";
+import "../src/solvent_token/EthiopianBirrV0.sol";
+import "../src/solvent_token/EthiopianBirrProxy.sol";
 
 contract DeployEthiopianBirrV0 is Script {
     function run() external {

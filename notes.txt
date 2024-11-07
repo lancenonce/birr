@@ -1,5 +1,110 @@
+
+
 forge script script/DeployEthiopianBirrV0.s.sol --rpc-url http://localhost:8545 --broadcast --private-key 0xe915e85ad35dc1f02c79e7c3edc477c1d3d45f76f4218f5a49fbf7b9223ee06f -vvvv
 
 todo:
 - must make master minter, it will also be the bridge manager
 - follow up on new bridge master
+
+// SPDX-License-Identifier: Apache-2.0
+
+pragma solidity =0.8.17;
+
+import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
+import "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
+import "@uniswap/v4-core/contracts/interfaces/IHooks.sol";
+import "./BlacklistableHook.sol"; // Import your hook
+
+contract ETB is ERC20Burnable, BlacklistableHook {
+    
+    IPoolManager public poolManager; // Reference to Uniswap V4's PoolManager
+
+    constructor(IPoolManager _poolManager) ERC20("Ethiopian Birr", "ETB") {
+        MESSAGE_OWNER = msg.sender;
+        poolManager = _poolManager;
+        
+        // Initialize BlacklistableHook
+        initialize(msg.sender);
+    }
+
+    function testMint(address _to, uint _amount) external {
+        require(msg.sender == MESSAGE_OWNER, "ETB: Only owner can call this function");
+        _mint(_to, _amount);
+    }
+
+    // pass desired output token here
+    function bridge(
+        uint _destChainId,
+        address _recipient,
+        uint _amount,
+        address _desiredOutputToken,
+        bool officialRate
+    ) external onlyActiveChain(_destChainId) {
+        // burn tokens
+        _burn(msg.sender, _amount);
+
+        // send cross chain message
+        _sendMessage(
+            _destChainId,
+            abi.encode(_recipient, _amount, _desiredOutputToken, officialRate)
+        );
+    }
+
+    // Process cross-chain messages
+    function messageProcess(
+        uint,
+        uint _sourceChainId,
+        address _sender,
+        address,
+        uint,
+        bytes calldata _data
+    ) external override onlySelf(_sender, _sourceChainId) {
+        
+        (address recipient, uint amount, address desiredOutputToken, bool officialRate) = abi.decode(
+            _data,
+            (address, uint, address, bool)
+        );
+
+        if (desiredOutputToken != address(this)) {
+            swap(amount, desiredOutputToken, officialRate);
+        } else {
+            _mint(recipient, amount);
+        }
+    }
+
+    // Swap tokens using market rate
+    function swap(uint amount, address desiredOutputToken, bool officialRate) internal notBlacklisted(msg.sender) {
+        
+        if (officialRate) {
+            officialSwap(amount);
+        } else {
+            marketSwap(amount, desiredOutputToken); // Call Uniswap V4 swap via marketSwap()
+        }
+    }
+
+    // Implement market swap using Uniswap V4 with hook configured
+    function marketSwap(uint amount, address desiredOutputToken) internal {
+
+       IPoolManager.PoolKey memory poolKey = IPoolManager.PoolKey({
+           currency0: Currency.wrap(address(this)),  // ETB token
+           currency1: Currency.wrap(desiredOutputToken),  // Desired output token (e.g., USDC)
+           fee: 3000  // Example fee tier (30 bps)
+       });
+
+       IPoolManager.SwapParams memory params = IPoolManager.SwapParams({
+           zeroForOne: true,
+           amountSpecified: int256(amount),
+           sqrtPriceLimitX96: 0
+       });
+
+       poolManager.swap(poolKey, params);  // Perform swap on Uniswap V4 PoolManager
+
+       emit SwapExecuted(amount, desiredOutputToken);  // Emit event for tracking
+   }
+
+   event SwapExecuted(uint amountSwapped, address outputToken);
+
+   function officialSwap(uint amount) internal {
+       // Implement official swap logic here if needed
+   }
+}
