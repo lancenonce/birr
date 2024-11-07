@@ -1,0 +1,21 @@
+node_modules
+.env
+coverage
+coverage.json
+typechain
+typechain-types
+.vscode
+deployments/localhost
+
+addresses-testnet.json
+chains-testnet.json
+addresses-tetnet.json
+chains-testnet.json
+addresses-mainnet.json
+chains-mainnet.json
+
+package-lock.json
+
+#Hardhat files
+cache
+artifacts
