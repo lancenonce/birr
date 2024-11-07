@@ -1,0 +1,1 @@
+// In this script, we verify the proof and then update the price on chain with the proof information

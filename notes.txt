@@ -1,0 +1,5 @@
+forge script script/DeployEthiopianBirrV0.s.sol --rpc-url http://localhost:8545 --broadcast --private-key 0xe915e85ad35dc1f02c79e7c3edc477c1d3d45f76f4218f5a49fbf7b9223ee06f -vvvv
+
+todo:
+- must make master minter, it will also be the bridge manager
+- follow up on new bridge master
