@@ -2,7 +2,7 @@
 
 pragma solidity ^0.8.0;
 
-import "../lib/uniswap-v4-core/src/interfaces/IHooks.sol";
+import "@uniswap-core/interfaces/IHooks.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
 

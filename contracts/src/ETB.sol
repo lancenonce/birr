@@ -1,10 +1,10 @@
-pragma solidity =0.8.17;
+pragma solidity ^0.8.17;
 
 import "@vialabs-io/npm-contracts/MessageClient.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
-import "./lib/uniswap-v4-core/src/interfaces/IPoolManager.sol";
-import "./lib/uniswap-v4-core/src/interfaces/IHooks.sol";
+import "@uniswap-core/interfaces/IPoolManager.sol";
+import "@uniswap-core/interfaces/IHooks.sol";
 import "./hooks/BirrHook.sol";
 
 contract ETB is ERC20Burnable, MessageClient, BirrHook {

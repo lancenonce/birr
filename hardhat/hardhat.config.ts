@@ -60,6 +60,9 @@ const config: any = {
 			},
 		],
 	},
+	networks: {
+		hardhat: {},
+	  },
 };
 
 export default config;
