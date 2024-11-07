@@ -8,7 +8,8 @@ import "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import "./hooks/BirrHook.sol";
 
 contract ETB is ERC20Burnable, MessageClient, BirrHook {
-    address constant public NOTARY_PUBLIC_KEY = 0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419; // dummy
+    address public constant NOTARY_PUBLIC_KEY =
+        0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419; // dummy
     uint256 public rate;
 
     event SwapExecuted(uint amountSwapped, address outputToken);
@@ -59,8 +60,12 @@ contract ETB is ERC20Burnable, MessageClient, BirrHook {
         bytes calldata _data
     ) external override onlySelf(_sender, _sourceChainId) {
         // decode message
-        (address _recipient, uint _amount, address _desiredOutputToken, bool _officialRate) = abi
-            .decode(_data, (address, uint, address, bool));
+        (
+            address _recipient,
+            uint _amount,
+            address _desiredOutputToken,
+            bool _officialRate
+        ) = abi.decode(_data, (address, uint, address, bool));
 
         // mint tokens
         // if desired token is not this one, swap to the desired token
@@ -72,7 +77,11 @@ contract ETB is ERC20Burnable, MessageClient, BirrHook {
     }
 
     // WARNING: For now, the desiredOutputToken is USDC by default, so the param is not used
-    function swap(uint _amount, address _desiredOutputToken, bool _useOfficialRate) internal notBlacklisted(msg.sender) {
+    function swap(
+        uint _amount,
+        address _desiredOutputToken,
+        bool _useOfficialRate
+    ) internal notBlacklisted(msg.sender) {
         if (_useOfficialRate) {
             officialSwap(_amount);
         } else {
@@ -80,8 +89,21 @@ contract ETB is ERC20Burnable, MessageClient, BirrHook {
         }
     }
 
-    function officialSwap(uint _amount) internal {
-        // Implement official swap logic here
+    function officialSwap(
+        uint _amount,
+        uint256 _rate,
+        bytes32 _messageHash,
+        bytes memory _signature,
+        address _usdc
+    ) internal {
+        require(verifySignature(_messageHash, _signature), "Invalid signature");
+        usdc = IERC20(_usdc);
+        uint256 usdcAmount = (_amount * _rate) / 1e18; 
+        require(
+            usdc.balanceOf(address(this)) >= usdcAmount,
+            "Insufficient USDC balance"
+        );
+        usdc.transfer(msg.sender, usdcAmount);
     }
 
     // This is the swap function for the uniswap AMM rate
@@ -105,23 +127,40 @@ contract ETB is ERC20Burnable, MessageClient, BirrHook {
         emit SwapExecuted(amount, desiredOutputToken);
     }
 
-    function updateRate(uint256 _rate, bytes32 _messageHash, bytes memory _signature) external onlyOwner {
+    function updateRate(
+        uint256 _rate,
+        bytes32 _messageHash,
+        bytes memory _signature
+    ) external onlyOwner {
         require(verifySignature(_messageHash, _signature), "Invalid signature");
         rate = _rate;
     }
 
-    function verifySignature(bytes32 _messageHash, bytes memory _signature) internal view returns (bool) {
+    function verifySignature(
+        bytes32 _messageHash,
+        bytes memory _signature
+    ) internal view returns (bool) {
         bytes32 ethSignedMessageHash = getEthSignedMessageHash(_messageHash);
         (bytes32 r, bytes32 s, uint8 v) = splitSignature(_signature);
         address signer = ecrecover(ethSignedMessageHash, v, r, s);
         return signer == PUBLIC_KEY;
     }
 
-    function getEthSignedMessageHash(bytes32 _messageHash) internal pure returns (bytes32) {
-        return keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", _messageHash));
+    function getEthSignedMessageHash(
+        bytes32 _messageHash
+    ) internal pure returns (bytes32) {
+        return
+            keccak256(
+                abi.encodePacked(
+                    "\x19Ethereum Signed Message:\n32",
+                    _messageHash
+                )
+            );
     }
 
-    function splitSignature(bytes memory _signature) internal pure returns (bytes32 r, bytes32 s, uint8 v) {
+    function splitSignature(
+        bytes memory _signature
+    ) internal pure returns (bytes32 r, bytes32 s, uint8 v) {
         require(_signature.length == 65, "Invalid signature length");
         assembly {
             r := mload(add(_signature, 32))
