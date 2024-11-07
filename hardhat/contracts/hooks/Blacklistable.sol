@@ -1,30 +1,20 @@
-// This is a hook for MiCA compliance.
-
 // SPDX-License-Identifier: Apache-2.0
 
 pragma solidity ^0.8.0;
 
-import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
 
 /**
  * @title Blacklistable Token
  * @dev Allows accounts to be blacklisted by a "blacklister" role
  */
-abstract contract Blacklistable is OwnableUpgradeable {
+abstract contract Blacklistable is Ownable {
     address public blacklister;
-    mapping(address => bool) internal _deprecatedBlacklisted;
+    mapping(address => bool) private _blacklisted;
 
     event Blacklisted(address indexed _account);
     event UnBlacklisted(address indexed _account);
     event BlacklisterChanged(address indexed newBlacklister);
-
-    /**
-     * @dev Initializes the contract setting the deployer as the initial owner.
-     */
-    function initialize(address initialOwner) public initializer {
-        __Ownable_init();
-        transferOwnership(initialOwner);
-    }
 
     /**
      * @dev Throws if called by any account other than the blacklister.
@@ -39,7 +29,7 @@ abstract contract Blacklistable is OwnableUpgradeable {
      * @param _account The address to check.
      */
     modifier notBlacklisted(address _account) {
-        require(!_isBlacklisted(_account), "Blacklistable: account is blacklisted");
+        require(!_blacklisted[_account], "Blacklistable: account is blacklisted");
         _;
     }
 
@@ -49,7 +39,7 @@ abstract contract Blacklistable is OwnableUpgradeable {
      * @return True if the account is blacklisted, false if not.
      */
     function isBlacklisted(address _account) external view returns (bool) {
-        return _isBlacklisted(_account);
+        return _blacklisted[_account];
     }
 
     /**
@@ -57,7 +47,7 @@ abstract contract Blacklistable is OwnableUpgradeable {
      * @param _account The address to blacklist.
      */
     function blacklist(address _account) external onlyBlacklister {
-        _blacklist(_account);
+        _blacklisted[_account] = true;
         emit Blacklisted(_account);
     }
 
@@ -66,7 +56,7 @@ abstract contract Blacklistable is OwnableUpgradeable {
      * @param _account The address to remove from the blacklist.
      */
     function unBlacklist(address _account) external onlyBlacklister {
-        _unBlacklist(_account);
+        _blacklisted[_account] = false;
         emit UnBlacklisted(_account);
     }
 
@@ -79,23 +69,4 @@ abstract contract Blacklistable is OwnableUpgradeable {
         blacklister = _newBlacklister;
         emit BlacklisterChanged(blacklister);
     }
-
-    /**
-     * @dev Checks if account is blacklisted.
-     * @param _account The address to check.
-     * @return true if the account is blacklisted, false otherwise.
-     */
-    function _isBlacklisted(address _account) internal view virtual returns (bool);
-
-    /**
-     * @dev Helper method that blacklists an account.
-     * @param _account The address to blacklist.
-     */
-    function _blacklist(address _account) internal virtual;
-
-    /**
-     * @dev Helper method that unblacklists an account.
-     * @param _account The address to unblacklist.
-     */
-    function _unBlacklist(address _account) internal virtual;
 }

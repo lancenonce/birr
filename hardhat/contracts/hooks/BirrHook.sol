@@ -10,10 +10,10 @@ import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 // The hook will be used to prevent blacklisted addresses from executing swaps.
 // Customers can compare the central bank rate (on scroll) with the market rate on Unichain
 /**
- * @title Blacklistable Hook
+ * @title Birr Blacklist Hook
  * @dev A Uniswap V4 hook that prevents blacklisted addresses from executing swaps.
  */
-contract BlacklistableHook is IHooks, OwnableUpgradeable {
+contract BirrHook is IHooks, OwnableUpgradeable {
     address public blacklister;
     mapping(address => bool) private _blacklisted;
 
