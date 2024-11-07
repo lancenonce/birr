@@ -1,0 +1,24 @@
+{
+	"name": "etb-token",
+	"version": "0.1.0",
+	"main": "index.js",
+	"author": "Atlas",
+	"license": "MIT",
+	"private": true,
+	"dependencies": {
+		"@openzeppelin/contracts": "^4.9.5",
+		"@vialabs-io/npm-contracts": "github:VIALabs-io/npm-contracts",
+		"@vialabs-io/npm-registry": "github:VIALabs-io/npm-registry"
+	},
+	"devDependencies": {
+		"@typechain/ethers-v6": "^0.5.1",
+		"@typechain/hardhat": "^9.1.0",
+		"@types/node": "^20.8.6",
+		"dotenv": "^16.4.1",
+		"hardhat": "^2.19.4",
+		"hardhat-deploy-ethers": "^0.4.1",
+		"ts-generator": "^0.1.1",
+		"ts-node": "^10.9.1",
+		"typescript": "^5.2.2"
+	}
+}
