@@ -1,6 +1,5 @@
 const networks = [
-    "ethereum-testnet",
-    "scroll-testnet",
-    "unichain-testnet"
+    "ethereum",
+    "unichain"
 ];
 export default networks;
