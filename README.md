@@ -1,4 +1,4 @@
-# Birr ☃️🇪🇹
+# Birr ☃️🇪🇹 (aka GoodRates)
 
 This is a Uniswap hook library for fetching the exchange rate of Ethiopian Birr and American dollars.
 
