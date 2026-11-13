@@ -1,3 +1,6 @@
 /bir/target
 /contracts/.env
 .env
+# Foundry build artifacts
+/contracts/out/
+/contracts/cache/
