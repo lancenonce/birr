@@ -8,6 +8,7 @@ solc = "0.8.26"
 evm_version = "cancun"
 optimizer = true
 optimizer_runs = 200
+via_ir = true # required by Primus JsonParser (stack too deep otherwise)
 fs_permissions = [{ access = "read", path = "./" }]
 
 remappings = [
