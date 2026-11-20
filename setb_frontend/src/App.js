@@ -1,166 +1,197 @@
-import React, { useState, useEffect } from "react";
-import Web3 from "web3";
+import React, { useCallback, useEffect, useState } from "react";
+import { ethers } from "ethers";
 import customLogo from "./customLogo.svg";
 import "./App.css";
-import contractABIJSON from "./abi/ETB.json";
+import { config, missingConfig, SEPOLIA_CHAIN_ID, UNICHAIN_SEPOLIA_CHAIN_ID } from "./config";
+import {
+  connectWallet,
+  etbContract,
+  explainError,
+  formatAge,
+  formatRate,
+  oracleContract,
+  toAttestationStruct,
+} from "./chain";
+import { attestNbeRate } from "./primus";
 
-const contractAddress = "0x7b230BE939C5A7795938916e4F7409B5e0880F4C";
-const contractABI = contractABIJSON.abi;
-const sepoliaChainId = 11155111;
+const CHAIN_IDS = { Ethereum: SEPOLIA_CHAIN_ID, Unichain: UNICHAIN_SEPOLIA_CHAIN_ID };
 
 function App() {
   const [sourceAsset, setSourceAsset] = useState("sETB");
-  const [targetAsset, setTargetAsset] = useState("sETB");
+  const [targetAsset, setTargetAsset] = useState("USDC");
   const [sourceChain, setSourceChain] = useState("Ethereum");
   const [targetChain, setTargetChain] = useState("Ethereum");
   const [targetAddress, setTargetAddress] = useState("");
-  const [useBankRate, setUseBankRate] = useState(false);
-  const [marketRate, setMarketRate] = useState(null);
-  const [bankRate, setBankRate] = useState(null);
+  const [useBankRate, setUseBankRate] = useState(true);
   const [amount, setAmount] = useState("");
 
-  useEffect(() => {
-    // Fetch market rate from Uniswap (mocked for this example)
-    setMarketRate(121.47); // Replace with actual API call
+  const [marketRate] = useState(121.47); // Uniswap market rate: placeholder (out of scope)
+  const [official, setOfficial] = useState(null); // { selling, buying, updatedAt, maxRateAge }
+  const [quote, setQuote] = useState(null);
+  const [status, setStatus] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
 
-    // Fetch bank exchange rate
-    fetch("https://api.nbe.gov.et/api/get-selected-exchange-rates")
-      .then((response) => response.json())
-      .then((data) => {
-        console.log("API response:", data);
+  const missing = missingConfig();
+  const isOfficialSwap = useBankRate && sourceChain === "Ethereum" && targetChain === "Ethereum";
 
-        if (data && data.data && Array.isArray(data.data)) {
-          // Find the rate for USD
-          const usdRate = data.data.find(
-            (rate) => rate.currency.code === "USD"
-          );
-
-          // Set bank rate to the "buying" value for USD if found
-          if (usdRate) {
-            setBankRate(usdRate.buying);
-            console.log("USD Buying Rate:", usdRate.buying);
-          } else {
-            console.error("USD rate not found in API response.");
-          }
-        } else {
-          console.error("Unexpected API response format:", data);
-        }
-      })
-      .catch((error) => {
-        console.error("Error fetching bank exchange rate:", error);
-      });
-  }, []);
-
-  const getDesiredOutputToken = (targetChain, targetAsset) => {
-    if (targetChain === "Unichain" && targetAsset === "sETB") {
-      return "0xdD3324AB2e26268E15c792Cb8c1f0eD8bA9A4C76";
-    } else if (targetChain === "Ethereum" && targetAsset === "sETB") {
-      return "0x7b230BE939C5A7795938916e4F7409B5e0880F4C";
-    } else if (targetChain === "Ethereum" && targetAsset === "USDC") {
-      return "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238";
-    } else if (targetChain === "Unichain" && targetAsset === "USDC") {
-      throw new Error("USDC is unsupported on Unichain");
-    } else {
-      throw new Error("Unsupported target chain or asset");
-    }
-  };
-
-  const handleSwap = async () => {
+  const refreshOfficialRate = useCallback(async () => {
+    if (missing.length) return;
     try {
-      const desiredOutputToken = "0x7b230BE939C5A7795938916e4F7409B5e0880F4C";
-  
-      if (window.ethereum) {
-        const web3 = new Web3(window.ethereum);
-        await window.ethereum.enable();
-        const currentChainId = await web3.eth.getChainId();
-  
-        // Check if the current network is Sepolia (chain ID 11155111)
-        if (currentChainId !== 11155111) {
-          try {
-            await window.ethereum.request({
-              method: 'wallet_switchEthereumChain',
-              params: [{ chainId: Web3.utils.toHex(11155111) }],
-            });
-          } catch (switchError) {
-            if (switchError.code === 4902) {
-              console.error("Sepolia Ethereum network is not added to MetaMask");
-            } else {
-              console.error("Failed to switch network:", switchError);
-            }
-            return; 
-          }
-        }
-  
-        const contract = new web3.eth.Contract(contractABI, contractAddress);
-        const accounts = await web3.eth.getAccounts();
-        const chainIdMap = {
-          Unichain: 1301,
-          Ethereum: 11155111,
-        };
-        const destChainId = chainIdMap[targetChain];
-  
-        contract.methods
-          .bridge(
-            destChainId,
-            targetAddress,
-            web3.utils.toWei(amount, "ether"),
-            desiredOutputToken,
-            useBankRate
-          )
-          .send({ from: accounts[0] })
-          .on("receipt", function (receipt) {
-            console.log("Transaction receipt: ", receipt);
-          });
-      } else {
-        console.log("MetaMask is not installed");
-      }
-    } catch (error) {
-      console.error(error.message);
+      const [[selling, buying, updatedAt], maxRateAge] = await Promise.all([
+        oracleContract().getRate(),
+        etbContract().maxRateAge(),
+      ]);
+      setOfficial({
+        selling,
+        buying,
+        updatedAt: updatedAt.toNumber(),
+        maxRateAge: maxRateAge.toNumber(),
+      });
+    } catch (e) {
+      setError(`Could not read the official rate: ${explainError(e)}`);
+    }
+  }, [missing.length]);
+
+  useEffect(() => {
+    refreshOfficialRate();
+  }, [refreshOfficialRate]);
+
+  // Live USDC quote for official-rate swaps.
+  useEffect(() => {
+    setQuote(null);
+    if (!isOfficialSwap || missing.length || !amount) return;
+    let wei;
+    try {
+      wei = ethers.utils.parseEther(amount);
+    } catch {
+      return;
+    }
+    let cancelled = false;
+    etbContract()
+      .quoteOfficial(wei)
+      .then(([usdcOut]) => !cancelled && setQuote(ethers.utils.formatUnits(usdcOut, 6)))
+      .catch(() => !cancelled && setQuote(null));
+    return () => {
+      cancelled = true;
+    };
+  }, [amount, isOfficialSwap, missing.length, official]);
+
+  const run = async (fn) => {
+    setBusy(true);
+    setError("");
+    try {
+      await fn();
+    } catch (e) {
+      setError(explainError(e));
+      setStatus("");
+    } finally {
+      setBusy(false);
     }
   };
+
+  const handleProveRate = () =>
+    run(async () => {
+      setStatus("Connecting wallet…");
+      const { signer, address } = await connectWallet(SEPOLIA_CHAIN_ID);
+
+      const attestation = await attestNbeRate(address, setStatus);
+      const att = toAttestationStruct(attestation);
+      const oracle = oracleContract(signer);
+
+      setStatus("Checking the proof against the oracle…");
+      await oracle.callStatic.submitRate(att); // surfaces a readable revert before asking for a signature
+
+      setStatus("Submitting proof on-chain — confirm in your wallet…");
+      const tx = await oracle.submitRate(att);
+      setStatus(`Waiting for confirmation (${tx.hash.slice(0, 10)}…)`);
+      await tx.wait();
+
+      setStatus("Official NBE rate updated on-chain ✓");
+      await refreshOfficialRate();
+    });
+
+  const handleSwap = () =>
+    run(async () => {
+      if (!amount) throw new Error("Enter an amount.");
+      const amountWei = ethers.utils.parseEther(amount);
+
+      if (isOfficialSwap) {
+        if (sourceAsset !== "sETB" || targetAsset !== "USDC") {
+          throw new Error("Official-rate swaps convert sETB → USDC.");
+        }
+        setStatus("Connecting wallet…");
+        const { signer, address } = await connectWallet(SEPOLIA_CHAIN_ID);
+        const etb = etbContract(signer);
+        const to = targetAddress || address;
+
+        await etb.callStatic.swapAtOfficialRate(amountWei, to);
+        setStatus("Swapping at the official rate — confirm in your wallet…");
+        const tx = await etb.swapAtOfficialRate(amountWei, to);
+        setStatus(`Waiting for confirmation (${tx.hash.slice(0, 10)}…)`);
+        await tx.wait();
+        setStatus(`Swapped ${amount} sETB → USDC at the official rate ✓`);
+        return;
+      }
+
+      // Cross-chain bridge (VIA Labs) — unchanged behaviour, out of scope for the official-rate work.
+      if (sourceChain !== "Ethereum") throw new Error("Bridging is only supported from Ethereum (Sepolia).");
+      setStatus("Connecting wallet…");
+      const { signer, address } = await connectWallet(SEPOLIA_CHAIN_ID);
+      const desiredOutputToken = targetChain === "Unichain" ? config.etbUnichainAddress : config.etbAddress;
+      setStatus("Bridging — confirm in your wallet…");
+      const tx = await etbContract(signer).bridge(
+        CHAIN_IDS[targetChain],
+        targetAddress || address,
+        amountWei,
+        desiredOutputToken,
+        useBankRate
+      );
+      await tx.wait();
+      setStatus(`Bridge transaction sent ✓ (${tx.hash.slice(0, 10)}…)`);
+    });
+
+  const now = Math.floor(Date.now() / 1000);
+  const hasRate = official && official.updatedAt > 0;
+  const isStale = hasRate && now > official.updatedAt + official.maxRateAge;
 
   return (
     <div className="App">
       <header className="App-header">
         <img src={customLogo} className="App-logo" alt="logo" />
         <h1>good rates</h1>
-        <form>
+
+        {missing.length > 0 && (
+          <p className="error" role="alert">
+            Missing configuration: {missing.join(", ")} (see setb_frontend/.env.example)
+          </p>
+        )}
+
+        <form onSubmit={(e) => e.preventDefault()}>
           <div>
             <label>Source Asset:</label>
-            <select
-              value={sourceAsset}
-              onChange={(e) => setSourceAsset(e.target.value)}
-            >
+            <select value={sourceAsset} onChange={(e) => setSourceAsset(e.target.value)}>
               <option value="sETB">sETB</option>
               <option value="USDC">USDC</option>
             </select>
           </div>
           <div>
             <label>Target Asset:</label>
-            <select
-              value={targetAsset}
-              onChange={(e) => setTargetAsset(e.target.value)}
-            >
+            <select value={targetAsset} onChange={(e) => setTargetAsset(e.target.value)}>
               <option value="sETB">sETB</option>
               <option value="USDC">USDC</option>
             </select>
           </div>
           <div>
             <label>Source Chain:</label>
-            <select
-              value={sourceChain}
-              onChange={(e) => setSourceChain(e.target.value)}
-            >
+            <select value={sourceChain} onChange={(e) => setSourceChain(e.target.value)}>
               <option value="Unichain">Unichain</option>
               <option value="Ethereum">Ethereum (Sepolia)</option>
             </select>
           </div>
           <div>
             <label>Target Chain:</label>
-            <select
-              value={targetChain}
-              onChange={(e) => setTargetChain(e.target.value)}
-            >
+            <select value={targetChain} onChange={(e) => setTargetChain(e.target.value)}>
               <option value="Unichain">Unichain</option>
               <option value="Ethereum">Ethereum (Sepolia)</option>
             </select>
@@ -169,35 +200,66 @@ function App() {
             <label>Target Address:</label>
             <input
               type="text"
+              placeholder="defaults to your wallet"
               value={targetAddress}
               onChange={(e) => setTargetAddress(e.target.value)}
             />
           </div>
           <div>
-            <label>Amount:</label>
-            <input
-              type="text"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-            />
+            <label>Amount (sETB):</label>
+            <input type="text" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} />
           </div>
           <div>
-            <label>Use Bank exchange rate for USD?</label>
+            <label htmlFor="bank-rate">Use official NBE rate for USD?</label>
             <input
+              id="bank-rate"
               type="checkbox"
               checked={useBankRate}
               onChange={(e) => setUseBankRate(e.target.checked)}
             />
           </div>
-          <button type="button" onClick={handleSwap}>
+          {isOfficialSwap && quote && <p className="quote">You receive ≈ {quote} USDC</p>}
+          <button type="button" onClick={handleSwap} disabled={busy || missing.length > 0}>
             Swap
           </button>
         </form>
+
         <div className="price-feed">
           <h2>Price Feed</h2>
           <p>Market Rate (Uniswap): {marketRate}</p>
-          <p>Official Bank Exchange Rate: {bankRate}</p>
+          <p>
+            Official NBE Rate (zkTLS-verified):{" "}
+            {hasRate ? (
+              <>
+                {formatRate(official.selling)} ETB/USD selling · {formatRate(official.buying)} buying{" "}
+                <span className={isStale ? "stale" : "fresh"}>
+                  ({formatAge(official.updatedAt, now)}
+                  {isStale ? ", stale" : ""})
+                </span>
+              </>
+            ) : (
+              "not proven yet"
+            )}
+          </p>
+          <button type="button" onClick={handleProveRate} disabled={busy || missing.length > 0}>
+            Prove latest NBE rate
+          </button>
+          <p className="hint">
+            Generates a Primus zkTLS proof of api.nbe.gov.et in your browser and posts it to the on-chain oracle.
+            Requires the Primus extension.
+          </p>
         </div>
+
+        {status && (
+          <p className="status" role="status">
+            {status}
+          </p>
+        )}
+        {error && (
+          <p className="error" role="alert">
+            {error}
+          </p>
+        )}
       </header>
     </div>
   );
