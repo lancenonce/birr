@@ -63,6 +63,8 @@ export async function attestNbeRate(userAddress, onStatus = () => {}) {
   if (!zk.verifyAttestation(attestation)) {
     throw new Error("Primus attestation failed signature verification");
   }
+  // Handy for matching contracts/script/config/nbe-spec.json to the real template (or saving for SubmitRate).
+  console.info("Primus attestation", JSON.stringify(attestation));
   return attestation;
 }
 
