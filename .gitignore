@@ -1,3 +1,7 @@
-/bir/target
-/contracts/.env
 .env
+.DS_Store
+
+# Foundry build artifacts and broadcast logs
+/contracts/out/
+/contracts/cache/
+/contracts/broadcast/

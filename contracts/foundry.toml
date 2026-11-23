@@ -2,7 +2,38 @@
 src = "src"
 out = "out"
 libs = ["lib"]
+test = "test"
+script = "script"
+solc = "0.8.26"
+evm_version = "cancun"
+optimizer = true
+optimizer_runs = 200
+via_ir = true # required by Primus JsonParser (stack too deep otherwise)
+fs_permissions = [{ access = "read", path = "./" }]
+
+remappings = [
+    "@openzeppelin/contracts-upgradeable/=lib/openzeppelin-contracts-upgradeable/contracts/",
+    "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
+    "@openzeppelin-up/=lib/openzeppelin-contracts-upgradeable/",
+    "@uniswap-core/=lib/v4-core/src/",
+    "@vialabs/=lib/npm-contracts/",
+    "@primuslabs/zktls-contracts/=lib/zktls-contracts/",
+    "forge-std/=lib/forge-std/src/",
+]
+
+[rpc_endpoints]
+sepolia = "${SEPOLIA_RPC_URL}"
+unichain_sepolia = "${UNICHAIN_SEPOLIA_RPC_URL}"
+
+[etherscan]
+sepolia = { key = "${ETHERSCAN_API_KEY}" }
+
+[fmt]
+line_length = 100
+tab_width = 4
+bracket_spacing = false
 
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
 
-remappings = ["@openzeppelin/=lib/openzeppelin-contracts/", "@openzeppelin-up/=lib/openzeppelin-contracts-upgradeable/", "@uniswap-core/=lib/v4-core/src", "@vialabs=lib/npm-contracts/"]
+[lint]
+lint_on_build = false

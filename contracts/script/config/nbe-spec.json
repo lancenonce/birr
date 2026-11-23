@@ -1,0 +1,11 @@
+{
+  "url": "https://api.nbe.gov.et/api/get-selected-exchange-rates",
+  "codeKey": "code",
+  "sellingKey": "selling",
+  "buyingKey": "buying",
+  "resolves": [
+    { "keyName": "code", "parseType": "JSON", "parsePath": "$.data[0].currency.code" },
+    { "keyName": "selling", "parseType": "JSON", "parsePath": "$.data[0].selling" },
+    { "keyName": "buying", "parseType": "JSON", "parsePath": "$.data[0].buying" }
+  ]
+}

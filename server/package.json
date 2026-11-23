@@ -1,0 +1,28 @@
+{
+  "name": "birr-primus-signer",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Signs Primus zkTLS attestation requests for the Birr frontend so the appSecret never ships to the browser.",
+  "type": "module",
+  "main": "src/index.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@primuslabs/zktls-js-sdk": "0.3.15",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.1"
+  },
+  "devDependencies": {
+    "ethers": "^5.7.2"
+  },
+  "overrides": {
+    "rpc-websockets": "9.3.8"
+  }
+}

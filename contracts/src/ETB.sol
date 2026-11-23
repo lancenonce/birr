@@ -1,108 +1,171 @@
-pragma solidity ^0.8.17;
+// SPDX-License-Identifier: Apache-2.0
+pragma solidity ^0.8.24;
 
 import "@vialabs/MessageClient.sol";
-import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
-import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@uniswap-core/interfaces/IPoolManager.sol";
-import "@uniswap-core/interfaces/IHooks.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
+import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {ERC20Burnable} from "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {IPoolManager} from "@uniswap-core/interfaces/IPoolManager.sol";
+import {IHooks} from "@uniswap-core/interfaces/IHooks.sol";
+import {PoolKey} from "@uniswap-core/types/PoolKey.sol";
+import {Currency} from "@uniswap-core/types/Currency.sol";
+import {NBERateOracle} from "./oracle/NBERateOracle.sol";
 
-contract ETB is ERC20Burnable, MessageClient, Ownable {
-    address public constant NOTARY_PUBLIC_KEY =
-        0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419; // dummy
-    uint256 public rate;
-
-    event SwapExecuted(uint amountSwapped, address outputToken);
+/// @title ETB (sETB)
+/// @notice Cross-chain Ethiopian Birr token. Holders can redeem sETB for USDC at the official
+///         National Bank of Ethiopia rate, proven on-chain via Primus zkTLS (see NBERateOracle).
+contract ETB is ERC20Burnable, MessageClient, Ownable, ReentrancyGuard {
+    using SafeERC20 for IERC20;
 
     IPoolManager public poolManager;
 
-    constructor(
-        IPoolManager _poolManager,
-        address initialOwner
-    ) ERC20("Ethiopian Birr", "ETB") Ownable(initialOwner) {
-        transferOwnership(initialOwner);
+    /// @notice Source of the zkTLS-verified NBE USD rate.
+    NBERateOracle public oracle;
+    /// @notice Token paid out by official-rate swaps (USDC). Held by this contract as a reserve.
+    IERC20 public usdc;
+    uint8 public usdcDecimals;
+    /// @notice Official swaps revert (or, cross-chain, fall back to minting sETB) if the rate is older than this.
+    uint256 public maxRateAge;
+
+    event SwapExecuted(uint256 amountSwapped, address outputToken);
+    event OfficialSwap(
+        address indexed from, address indexed to, uint256 etbIn, uint256 usdcOut, uint256 sellingRate
+    );
+    event OfficialSwapFallback(address indexed recipient, uint256 etbAmount);
+    event OracleUpdated(address oracle);
+    event UsdcUpdated(address usdc, uint8 decimals);
+    event MaxRateAgeUpdated(uint256 maxRateAge);
+    event ReserveWithdrawn(address indexed token, address indexed to, uint256 amount);
+
+    error ZeroAddress();
+    error ZeroAmount();
+    error OfficialRateNotConfigured();
+    error RateUnavailable();
+    error StaleRate(uint256 updatedAt);
+    error InsufficientReserve(uint256 needed, uint256 available);
+
+    constructor(IPoolManager _poolManager, address initialOwner)
+        ERC20("Ethiopian Birr", "ETB")
+        Ownable(initialOwner)
+    {
         MESSAGE_OWNER = msg.sender;
         poolManager = _poolManager;
+        maxRateAge = 1 days;
     }
 
-    function testMint(address _to, uint _amount) external {
-        require(
-            msg.sender == MESSAGE_OWNER,
-            "ETB: Only owner can call this function"
-        );
+    function testMint(address _to, uint256 _amount) external {
+        require(msg.sender == MESSAGE_OWNER, "ETB: Only owner can call this function");
         _mint(_to, _amount);
     }
 
+    // ---------------------------------------------------------------------
+    // Official-rate swap (same chain)
+    // ---------------------------------------------------------------------
+
+    /// @notice Burn `etbAmount` sETB from the caller and send USDC to `to` at the NBE selling rate.
+    /// @return usdcOut USDC (in its native decimals) sent to `to`.
+    function swapAtOfficialRate(uint256 etbAmount, address to)
+        external
+        nonReentrant
+        returns (uint256 usdcOut)
+    {
+        if (to == address(0)) revert ZeroAddress();
+        if (etbAmount == 0) revert ZeroAmount();
+
+        uint256 selling;
+        (usdcOut, selling) = quoteOfficial(etbAmount);
+        if (usdcOut == 0) revert ZeroAmount();
+        uint256 available = usdc.balanceOf(address(this));
+        if (available < usdcOut) revert InsufficientReserve(usdcOut, available);
+
+        _burn(msg.sender, etbAmount);
+        usdc.safeTransfer(to, usdcOut);
+
+        emit OfficialSwap(msg.sender, to, etbAmount, usdcOut, selling);
+    }
+
+    /// @notice USDC out for `etbAmount` sETB at the current official rate. Reverts if the rate is unusable.
+    /// @dev usdcOut = etbAmount[1e18] * 10^usdcDecimals / sellingRate[1e18 ETB per USD]. Rounds down.
+    function quoteOfficial(uint256 etbAmount)
+        public
+        view
+        returns (uint256 usdcOut, uint256 sellingRate)
+    {
+        if (address(oracle) == address(0) || address(usdc) == address(0)) {
+            revert OfficialRateNotConfigured();
+        }
+        uint256 updatedAt;
+        (sellingRate,, updatedAt) = oracle.getRate();
+        if (sellingRate == 0) revert RateUnavailable();
+        if (block.timestamp > updatedAt + maxRateAge) revert StaleRate(updatedAt);
+        usdcOut = etbAmount * 10 ** usdcDecimals / sellingRate;
+    }
+
+    // ---------------------------------------------------------------------
+    // Cross-chain (VIA Labs)
+    // ---------------------------------------------------------------------
+
     // pass desired output token here
     function bridge(
-        uint _destChainId,
+        uint256 _destChainId,
         address _recipient,
-        uint _amount,
+        uint256 _amount,
         address _desiredOutputToken,
         bool officialRate
     ) external onlyActiveChain(_destChainId) {
-        // burn tokens
         _burn(msg.sender, _amount);
-
-        // send cross chain message
         _sendMessage(
-            _destChainId,
-            abi.encode(_recipient, _amount, _desiredOutputToken, officialRate)
+            _destChainId, abi.encode(_recipient, _amount, _desiredOutputToken, officialRate)
         );
     }
 
-    // Process cross-chain messages
     function messageProcess(
-        uint,
-        uint _sourceChainId,
+        uint256,
+        uint256 _sourceChainId,
         address _sender,
         address,
-        uint,
+        uint256,
         bytes calldata _data
     ) external override onlySelf(_sender, _sourceChainId) {
-        // decode message
-        (
-            address _recipient,
-            uint _amount,
-            address _desiredOutputToken,
-            bool _officialRate
-        ) = abi.decode(_data, (address, uint, address, bool));
+        (address _recipient, uint256 _amount, address _desiredOutputToken, bool _officialRate) =
+            abi.decode(_data, (address, uint256, address, bool));
 
-        // mint tokens
-        // if desired token is not this one, swap to the desired token
-        if (_desiredOutputToken != address(this)) {
-            swap(_amount, _desiredOutputToken, _officialRate);
-        } else {
+        if (_desiredOutputToken == address(this)) {
             _mint(_recipient, _amount);
-        }
-    }
-
-    function swap(
-        uint _amount,
-        address _desiredOutputToken,
-        bool _useOfficialRate
-    ) internal {
-        if (_useOfficialRate) {
-            officialSwap(_amount, _desiredOutputToken);
+        } else if (_officialRate) {
+            _officialPayoutOrMint(_recipient, _amount, _desiredOutputToken);
         } else {
             marketSwap(_amount, _desiredOutputToken);
         }
     }
 
-    function officialSwap(uint _amount, address _desiredOutputToken) internal {
-        IERC20 token = IERC20(_desiredOutputToken);
-        uint256 usdcAmount = (_amount * rate) / 1e18;
-        require(
-            token.balanceOf(address(this)) >= usdcAmount,
-            "Insufficient USDC balance"
-        );
-        token.transfer(msg.sender, usdcAmount);
+    /// @dev Cross-chain official swap. The sETB was already burned on the source chain, so this must never
+    ///      revert in a way that strands value: if the official payout can't be made, re-mint sETB instead.
+    function _officialPayoutOrMint(address recipient, uint256 etbAmount, address outputToken) internal {
+        if (outputToken == address(usdc) && address(oracle) != address(0)) {
+            (uint256 selling,, uint256 updatedAt) = oracle.getRate();
+            if (selling != 0 && block.timestamp <= updatedAt + maxRateAge) {
+                uint256 usdcOut = etbAmount * 10 ** usdcDecimals / selling;
+                if (usdcOut != 0 && usdc.balanceOf(address(this)) >= usdcOut) {
+                    usdc.safeTransfer(recipient, usdcOut);
+                    emit OfficialSwap(address(0), recipient, etbAmount, usdcOut, selling);
+                    return;
+                }
+            }
+        }
+        _mint(recipient, etbAmount);
+        emit OfficialSwapFallback(recipient, etbAmount);
     }
 
-    // This is the swap function for the uniswap AMM rate
-    function marketSwap(uint _amount, address desiredOutputToken) internal {
-        // Implement market swap logic here
+    // ---------------------------------------------------------------------
+    // Market swap (Uniswap v4) — out of scope for the official-rate work; unchanged.
+    // ---------------------------------------------------------------------
+
+    function marketSwap(uint256 _amount, address desiredOutputToken) internal {
         PoolKey memory poolKey = PoolKey({
             currency0: Currency.wrap(address(this)),
             currency1: Currency.wrap(desiredOutputToken),
@@ -117,52 +180,38 @@ contract ETB is ERC20Burnable, MessageClient, Ownable {
             sqrtPriceLimitX96: 0
         });
 
-        // SWAP!
-         poolManager.swap(poolKey, params, "");
+        poolManager.swap(poolKey, params, "");
 
         emit SwapExecuted(_amount, desiredOutputToken);
     }
 
-    function updateRate(
-        uint256 _rate,
-        bytes32 _messageHash,
-        bytes memory _signature
-    ) external onlyOwner {
-        require(verifySignature(_messageHash, _signature), "Invalid signature");
-        rate = _rate;
+    // ---------------------------------------------------------------------
+    // Admin
+    // ---------------------------------------------------------------------
+
+    function setOracle(NBERateOracle _oracle) external onlyOwner {
+        if (address(_oracle) == address(0)) revert ZeroAddress();
+        oracle = _oracle;
+        emit OracleUpdated(address(_oracle));
     }
 
-    function verifySignature(
-        bytes32 _messageHash,
-        bytes memory _signature
-    ) internal view returns (bool) {
-        // bytes32 ethSignedMessageHash = getEthSignedMessageHash(_messageHash);
-        // (bytes32 r, bytes32 s, uint8 v) = splitSignature(_signature);
-        // address signer = ecrecover(ethSignedMessageHash, v, r, s);
-        // return signer == PUBLIC_KEY;
-        return true;
+    function setUsdc(IERC20 _usdc) external onlyOwner {
+        if (address(_usdc) == address(0)) revert ZeroAddress();
+        usdc = _usdc;
+        usdcDecimals = IERC20Metadata(address(_usdc)).decimals();
+        emit UsdcUpdated(address(_usdc), usdcDecimals);
     }
 
-    function getEthSignedMessageHash(
-        bytes32 _messageHash
-    ) internal pure returns (bytes32) {
-        return
-            keccak256(
-                abi.encodePacked(
-                    "\x19Ethereum Signed Message:\n32",
-                    _messageHash
-                )
-            );
+    function setMaxRateAge(uint256 _maxRateAge) external onlyOwner {
+        if (_maxRateAge == 0) revert ZeroAmount();
+        maxRateAge = _maxRateAge;
+        emit MaxRateAgeUpdated(_maxRateAge);
     }
 
-    function splitSignature(
-        bytes memory _signature
-    ) internal pure returns (bytes32 r, bytes32 s, uint8 v) {
-        require(_signature.length == 65, "Invalid signature length");
-        assembly {
-            r := mload(add(_signature, 32))
-            s := mload(add(_signature, 64))
-            v := byte(0, mload(add(_signature, 96)))
-        }
+    /// @notice Withdraw reserve tokens (e.g. USDC). The reserve is funded by plain transfers to this contract.
+    function withdrawReserve(IERC20 token, address to, uint256 amount) external onlyOwner {
+        if (to == address(0)) revert ZeroAddress();
+        token.safeTransfer(to, amount);
+        emit ReserveWithdrawn(address(token), to, amount);
     }
 }
